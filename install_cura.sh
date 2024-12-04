@@ -35,15 +35,15 @@ APP_NAME="Ultimaker-Cura"
 ICON_THEME="Yaru"
 INSTALL_DIR="$HOME/.local/bin"
 DESKTOP_ENTRY_DIR="$HOME/.local/share/applications"
-ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
-MIME_ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/mimetypes"
+ICON_DIR="/usr/share/icons/${ICON_THEME}/256x256/mimetypes"
 APPIMAGE_FILE="${INSTALL_DIR}/${APP_NAME}.AppImage"
 ICON_FILE="${ICON_DIR}/application-sla.png"
-YARU_MIME_ICON_FILE="/usr/share/icons/${ICON_THEME}/256x256/mimetypes/application-sla.png"
 DESKTOP_FILE="${DESKTOP_ENTRY_DIR}/${APP_NAME}.desktop"
+STARTUP_WM_CLASS="UltiMaker-Cura"  # Correct WM_CLASS for Cura
 
 # Ensure directories exist
-mkdir -p "$INSTALL_DIR" "$DESKTOP_ENTRY_DIR" "$ICON_DIR" "$MIME_ICON_DIR"
+mkdir -p "$INSTALL_DIR" "$DESKTOP_ENTRY_DIR"
+sudo mkdir -p "$ICON_DIR"
 
 # Download the AppImage
 if [ ! -f "$APPIMAGE_FILE" ]; then
@@ -57,21 +57,17 @@ fi
 # Download the icon
 if [ ! -f "$ICON_FILE" ]; then
   echo "Downloading Cura icon..."
-  curl -L "$ICON_URL" -o "$ICON_FILE"
+  curl -L "$ICON_URL" -o "/tmp/${APP_NAME}.png"
+  sudo mv "/tmp/${APP_NAME}.png" "$ICON_FILE"
 else
   echo "Cura icon already exists, skipping download."
 fi
-
-# Copy the icon for STL MIME types in the Yaru theme
-echo "Setting Cura icon for STL files in the Yaru theme..."
-sudo mkdir -p "/usr/share/icons/${ICON_THEME}/256x256/mimetypes"
-sudo cp "$ICON_FILE" "$YARU_MIME_ICON_FILE"
 
 # Update Yaru icon cache
 echo "Updating the Yaru icon cache..."
 sudo gtk-update-icon-cache "/usr/share/icons/${ICON_THEME}"
 
-# Create a .desktop file
+# Create a .desktop file with StartupWMClass
 echo "Creating desktop entry for Cura..."
 cat > "$DESKTOP_FILE" <<EOL
 [Desktop Entry]
@@ -82,6 +78,7 @@ Icon=${ICON_FILE}
 Terminal=false
 MimeType=application/sla;application/vnd.ms-pki.stl;
 Categories=Graphics;X-3DPrinting;
+StartupWMClass=${STARTUP_WM_CLASS}
 EOL
 
 # Update desktop database
@@ -120,5 +117,4 @@ xdg-mime default "${APP_NAME}.desktop" application/vnd.ms-pki.stl
 echo "Restarting Nautilus..."
 nautilus -q && nautilus &
 
-echo "Ultimaker Cura installation complete! STL files are now associated with Cura, and the Cura icon is displayed in Nautilus."
-
+echo "Ultimaker Cura installation complete! STL files are now associated with Cura, and the Cura icon is displayed in Nautilus and the GNOME launcher."
