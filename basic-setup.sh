@@ -13,7 +13,7 @@ install_base_setup() {
     sudo apt update && sudo apt install -y curl git build-essential
 
     echo "Installing Flameshot..."
-    sudo snap install flameshot
+    sudo apt install -y flameshot
 
     echo "Copying SSH key..."
     if [ -f "id_rsa" ]; then
