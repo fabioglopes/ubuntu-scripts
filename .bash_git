@@ -1,0 +1,67 @@
+#  Console BASH customizado para mostrar o branch atual do repositório GIT.
+#
+#  Por Alysson Gonçalves
+#  Baseado em Mike Stewart - http://mediadoneright.com/content/ultimate-git-ps1-bash-prompt
+
+# Para ativar essas modificações, salve o arquivo como .bash_git
+# e adicione as linhas a seguir no final do arquivo .bashrc
+# if [ -f ~/.bash_git ]; then
+#    . ~/.bash_git
+# fi
+
+# Caso o diretório atual contenha um repositório git,
+# esse branch não possua nenhuma modificação, o console ficará como:
+# user@host:/home/user/path/projeto (master)
+# $
+
+# Caso o diretório atual contenha um repositório git,
+# esse branch possua alguma modificação, o console ficará como:
+# user@host:/home/user/path/projeto {master}
+# $
+
+# Caso o diretório atual não contenha um repositório git,
+# o console ficará como:
+# user@host:/home/user/path/projeto
+# $
+
+# Reset
+cOff="\[\033[0m\]"          # Text Reset
+
+# High Intensty
+cRed="\[\033[0;91m\]"       # Red
+cGreen="\[\033[0;92m\]"     # Green
+cYellow="\[\033[0;93m\]"    # Yellow
+cBlue="\[\033[0;94m\]"      # Blue
+
+# Various variables you might want for your PS1 prompt instead
+gUserHost=$cBlue"\u@\h"     # Mostra o user@host
+gPath=$cYellow"\w"          # Mostra o path atual (reduzido)
+gEndLine=$cOff"\n\$ "       # Quebra a linha e mostra o '$ ' na linha abaixo
+gNoChanges=$cGreen          # Se não houver modificação, o branch é exibido em verde
+gChanged=$cRed              # Se houver modificações, o branch é exibido em vermelho
+
+export PS1="${gUserHost}${cOff}:${gPath} "'`git branch &>/dev/null;\
+    if [ $? -eq 0 ]; then \
+        echo $(git status | grep "nothing to commit" > /dev/null 2>&1; \
+        if [ "$?" -eq "0" ]; then \
+            # @4 - Clean repository - nothing to commit
+            echo "'$gNoChanges'"$(__git_ps1 "(%s)"); \
+        else \
+            # @5 - Changes to working tree
+            echo "'$gChanged'"$(__git_ps1 "{%s}"); \
+        fi); \
+    fi`'"${gEndLine}"
+
+# Libera as variaveis para não afetar o ambiente externo
+unset cOff
+unset cRed
+unset cGreen
+unset cYellow
+unset cBlue
+
+unset gUserHost
+unset gPath
+unset gEndLine
+unset gNoChanges
+unset gChanged
+

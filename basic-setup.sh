@@ -1,26 +1,60 @@
 #!/bin/bash
 
-install_base_packages() {
-    echo "Installing base packages..."
-    sudo apt install curl git build-essential -y 
+install_base_setup() {
+     if [ ! -d ~/software-projects ]; then
+         echo "Creating software-projects directory..."
+         mkdir -p ~/software-projects
+     else
+         echo "software-projects directory already exists."
+     fi
+
+     echo "Installing base packages..."
+     sudo apt update && sudo apt install -y curl git build-essential
+
+     echo "Setting up bash_git configuration..."
+     # Copy .bash_git file to home directory if it doesn't exist there
+     if [ ! -f ~/.bash_git ]; then
+         if [ -f .bash_git ]; then
+             cp .bash_git ~/.bash_git
+             echo ".bash_git file copied to home directory"
+         else
+             echo "Error: .bash_git file not found in current directory!"
+         fi
+     else
+         echo ".bash_git file already exists in home directory"
+     fi
+
+     # Add .bash_git configuration to .bashrc
+     if ! grep -q "bash_git" ~/.bashrc; then
+         echo "# Adding bash_git configuration"
+         echo "if [ -f ~/.bash_git ]; then" >> ~/.bashrc
+         echo "   . ~/.bash_git" >> ~/.bashrc
+         echo "fi" >> ~/.bashrc
+         echo "bash_git configuration added to .bashrc"
+     else
+         echo "bash_git configuration already exists in .bashrc"
+     fi
+
 }
+
 
 install_mise_ruby() {
     echo "Installing Mise and latest Ruby..."
-    sudo apt-get update
-    sudo apt install build-essential rustc libssl-dev libyaml-dev zlib1g-dev libgmp-dev -y
+    sudo apt install -y build-essential rustc libssl-dev libyaml-dev zlib1g-dev libgmp-dev
     curl https://mise.run | sh
-    echo 'eval "$(~/.local/bin/mise activate)"' >> ~/.bashrc
+    echo 'eval "$(mise activate bash)"' >> ~/.bashrc
     source ~/.bashrc
+    mise install ruby@3
     mise use --global ruby@3
 
     echo "Installing Node.js using Mise..."
+    mise install node@lts
     mise use --global node@lts
 }
 
 install_postgres() {
     echo "Installing PostgreSQL..."
-    sudo apt install postgresql postgresql-client -y
+    sudo apt install -y postgresql postgresql-client
     sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
 }
 
@@ -28,21 +62,19 @@ install_docker() {
     echo "Installing Docker..."
     sudo mkdir -p /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \n    $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt-get update
-    sudo apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 }
 
 install_browsers() {
     echo "Installing Brave Browser and Google Chrome..."
     sudo apt install -y curl
-    
+
     # Install Brave
     sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
     echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
-    sudo apt update
-    sudo apt install -y brave-browser
-    
+    sudo apt update && sudo apt install -y brave-browser
+
     # Install Google Chrome
     wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
     sudo apt install -y ./google-chrome-stable_current_amd64.deb
@@ -58,28 +90,40 @@ install_ides() {
 install_lastpass() {
     echo "Installing LastPass..."
     wget https://download.cloud.lastpass.com/linux/lplinux.tar.bz2
-    tar xjvf lplinux.tar.bz2
-    ./install_lastpass.sh
-    rm -rf lplinux.tar.bz2 install_lastpass.sh
+    if [ -f "lplinux.tar.bz2" ]; then
+        tar xjvf lplinux.tar.bz2
+        if [ -f "install_lastpass.sh" ]; then
+            ./install_lastpass.sh
+            rm -rf lplinux.tar.bz2 install_lastpass.sh
+        else
+            echo "Error: install_lastpass.sh not found!"
+        fi
+    else
+        echo "Error: LastPass download failed!"
+    fi
 }
 
 install_cura() {
     echo "Installing Cura..."
-    chmod +x install_cura.sh
-    ./install_cura.sh
+    if [ -f "install_cura.sh" ]; then
+        chmod +x install_cura.sh
+        ./install_cura.sh
+    else
+        echo "Error: install_cura.sh not found!"
+    fi
 }
 
 copy_ssh_key() {
     echo "Copying SSH key..."
-    mkdir -p ~/.ssh
-    cp id_rsa ~/.ssh/id_rsa
-    chmod 400 ~/.ssh/id_rsa
+    if [ -f "id_rsa" ]; then
+        mkdir -p ~/.ssh
+        cp id_rsa ~/.ssh/id_rsa
+        chmod 400 ~/.ssh/id_rsa
+    else
+        echo "Error: id_rsa file not found!"
+    fi
 }
 
-create_software_projects_dir() {
-    echo "Creating software-projects directory..."
-    mkdir -p ~/software-projects
-}
 
 install_all() {
     install_base_packages
@@ -96,7 +140,7 @@ install_all() {
 
 while true; do
     echo "Select options to install (comma-separated, e.g., 1,3,5):"
-    echo "1) Base Packages"
+    echo "1) Base Setup (includes software-projects directory and bash_git config)"
     echo "2) Mise and Latest Ruby (Includes Node.js)"
     echo "3) PostgreSQL"
     echo "4) Docker"
@@ -105,15 +149,16 @@ while true; do
     echo "7) LastPass"
     echo "8) Install Cura"
     echo "9) Copy SSH Key"
-    echo "10) Create software-projects directory"
-    echo "11) Install All"
-    echo "12) Exit"
+    echo "10) Install All"
+    echo "11) Exit"
     read -p "Enter your choices: " choices
 
-    IFS=',' read -ra options <<< "$choices"
-    for choice in "${options[@]}"; do
-        case $choice in
-            1) install_base_packages ;;
+    # Process choices
+    IFS=',' read -ra selected_options <<< "$choices"
+    for option in "${selected_options[@]}"; do
+        option=$(echo "$option" | tr -d '[:space:]')
+        case $option in
+            1) install_base_setup ;;
             2) install_mise_ruby ;;
             3) install_postgres ;;
             4) install_docker ;;
@@ -122,11 +167,9 @@ while true; do
             7) install_lastpass ;;
             8) install_cura ;;
             9) copy_ssh_key ;;
-            10) create_software_projects_dir ;;
-            11) install_all ;;
-            12) exit 0 ;;
-            *) echo "Invalid option: $choice" ;;
+            10) install_all ;;
+            11) echo "Exiting..."; exit 0 ;;
+            *) echo "Invalid option: $option" ;;
         esac
     done
 done
-
