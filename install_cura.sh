@@ -45,6 +45,11 @@ STARTUP_WM_CLASS="UltiMaker-Cura"  # Correct WM_CLASS for Cura
 mkdir -p "$INSTALL_DIR" "$DESKTOP_ENTRY_DIR"
 sudo mkdir -p "$ICON_DIR"
 
+# Install necessary dependencies
+echo "Installing necessary dependencies..."
+sudo apt update
+sudo apt install -y libfuse2 curl
+
 # Download the AppImage
 if [ ! -f "$APPIMAGE_FILE" ]; then
   echo "Downloading Cura AppImage..."
@@ -118,3 +123,4 @@ echo "Restarting Nautilus..."
 nautilus -q && nautilus &
 
 echo "Ultimaker Cura installation complete! STL files are now associated with Cura, and the Cura icon is displayed in Nautilus and the GNOME launcher."
+
