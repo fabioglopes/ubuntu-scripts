@@ -1,41 +1,55 @@
 #!/bin/bash
 
 install_base_setup() {
-     if [ ! -d ~/software-projects ]; then
-         echo "Creating software-projects directory..."
-         mkdir -p ~/software-projects
-     else
-         echo "software-projects directory already exists."
-     fi
+    echo "Creating software-projects directory..."
+    if [ ! -d ~/software-projects ]; then
+        mkdir -p ~/software-projects
+        echo "software-projects directory created."
+    else
+        echo "software-projects directory already exists."
+    fi
 
-     echo "Installing base packages..."
-     sudo apt update && sudo apt install -y curl git build-essential
+    echo "Installing base packages..."
+    sudo apt update && sudo apt install -y curl git build-essential
 
-     echo "Setting up bash_git configuration..."
-     # Copy .bash_git file to home directory if it doesn't exist there
-     if [ ! -f ~/.bash_git ]; then
-         if [ -f .bash_git ]; then
-             cp .bash_git ~/.bash_git
-             echo ".bash_git file copied to home directory"
-         else
-             echo "Error: .bash_git file not found in current directory!"
-         fi
-     else
-         echo ".bash_git file already exists in home directory"
-     fi
+    echo "Installing Flameshot..."
+    sudo snap install flameshot
 
-     # Add .bash_git configuration to .bashrc
-     if ! grep -q "bash_git" ~/.bashrc; then
-         echo "# Adding bash_git configuration"
-         echo "if [ -f ~/.bash_git ]; then" >> ~/.bashrc
-         echo "   . ~/.bash_git" >> ~/.bashrc
-         echo "fi" >> ~/.bashrc
-         echo "bash_git configuration added to .bashrc"
-     else
-         echo "bash_git configuration already exists in .bashrc"
-     fi
+    echo "Copying SSH key..."
+    if [ -f "id_rsa" ]; then
+        mkdir -p ~/.ssh
+        cp id_rsa ~/.ssh/id_rsa
+        chmod 400 ~/.ssh/id_rsa
+        echo "SSH key copied successfully."
+    else
+        echo "Error: id_rsa file not found!"
+    fi
 
+    echo "Setting up bash_git configuration..."
+    # Copy .bash_git file to home directory if it doesn't exist there
+    if [ ! -f ~/.bash_git ]; then
+        if [ -f .bash_git ]; then
+            cp .bash_git ~/.bash_git
+            echo ".bash_git file copied to home directory"
+        else
+            echo "Error: .bash_git file not found in current directory!"
+        fi
+    else
+        echo ".bash_git file already exists in home directory"
+    fi
+
+    # Add .bash_git configuration to .bashrc
+    if ! grep -q "bash_git" ~/.bashrc; then
+        echo "# Adding bash_git configuration"
+        echo "if [ -f ~/.bash_git ]; then" >> ~/.bashrc
+        echo "   . ~/.bash_git" >> ~/.bashrc
+        echo "fi" >> ~/.bashrc
+        echo "bash_git configuration added to .bashrc"
+    else
+        echo "bash_git configuration already exists in .bashrc"
+    fi
 }
+
 
 
 install_mise_ruby() {
@@ -113,20 +127,9 @@ install_cura() {
     fi
 }
 
-copy_ssh_key() {
-    echo "Copying SSH key..."
-    if [ -f "id_rsa" ]; then
-        mkdir -p ~/.ssh
-        cp id_rsa ~/.ssh/id_rsa
-        chmod 400 ~/.ssh/id_rsa
-    else
-        echo "Error: id_rsa file not found!"
-    fi
-}
-
 
 install_all() {
-    install_base_packages
+    install_base_setup
     install_mise_ruby
     install_postgres
     install_docker
@@ -134,13 +137,12 @@ install_all() {
     install_ides
     install_lastpass
     install_cura
-    copy_ssh_key
-    create_software_projects_dir
 }
+
 
 while true; do
     echo "Select options to install (comma-separated, e.g., 1,3,5):"
-    echo "1) Base Setup (includes software-projects directory and bash_git config)"
+    echo "1) Base Setup (includes software-projects directory, SSH key, bash_git config, and Flameshot)"
     echo "2) Mise and Latest Ruby (Includes Node.js)"
     echo "3) PostgreSQL"
     echo "4) Docker"
@@ -148,9 +150,8 @@ while true; do
     echo "6) VS Code & RubyMine"
     echo "7) LastPass"
     echo "8) Install Cura"
-    echo "9) Copy SSH Key"
-    echo "10) Install All"
-    echo "11) Exit"
+    echo "9) Install All"
+    echo "10) Exit"
     read -p "Enter your choices: " choices
 
     # Process choices
@@ -166,9 +167,8 @@ while true; do
             6) install_ides ;;
             7) install_lastpass ;;
             8) install_cura ;;
-            9) copy_ssh_key ;;
-            10) install_all ;;
-            11) echo "Exiting..."; exit 0 ;;
+            9) install_all ;;
+            10) echo "Exiting..."; exit 0 ;;
             *) echo "Invalid option: $option" ;;
         esac
     done
