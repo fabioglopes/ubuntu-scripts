@@ -10,7 +10,7 @@ install_base_setup() {
     fi
 
     echo "Installing base packages..."
-    sudo apt update && sudo apt install -y curl git build-essential
+    sudo apt update && sudo apt install -y curl git build-essential libpq-dev
 
     echo "Installing Flameshot..."
     sudo apt install -y flameshot
