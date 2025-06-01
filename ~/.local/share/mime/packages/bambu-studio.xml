@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+    <mime-type type="model/stl">
+        <comment>STL 3D Model</comment>
+        <comment xml:lang="en">STL 3D Model</comment>
+        <glob pattern="*.stl"/>
+        <glob pattern="*.STL"/>
+        <magic priority="50">
+            <match value="solid" type="string" offset="0"/>
+        </magic>
+        <icon name="model-stl"/>
+    </mime-type>
+    <mime-type type="application/sla">
+        <comment>SLA 3D Model</comment>
+        <comment xml:lang="en">SLA 3D Model</comment>
+        <glob pattern="*.stl"/>
+        <glob pattern="*.STL"/>
+        <icon name="model-stl"/>
+    </mime-type>
+    <mime-type type="application/vnd.ms-pki.stl">
+        <comment>STL 3D Model (Microsoft)</comment>
+        <comment xml:lang="en">STL 3D Model (Microsoft)</comment>
+        <glob pattern="*.stl"/>
+        <glob pattern="*.STL"/>
+        <icon name="model-stl"/>
+    </mime-type>
+    <mime-type type="model/x.stl-ascii">
+        <comment>STL 3D Model (ASCII)</comment>
+        <comment xml:lang="en">STL 3D Model (ASCII)</comment>
+        <glob pattern="*.stl"/>
+        <glob pattern="*.STL"/>
+        <icon name="model-stl"/>
+    </mime-type>
+    <mime-type type="model/x.stl-binary">
+        <comment>STL 3D Model (Binary)</comment>
+        <comment xml:lang="en">STL 3D Model (Binary)</comment>
+        <glob pattern="*.stl"/>
+        <glob pattern="*.STL"/>
+        <icon name="model-stl"/>
+    </mime-type>
+</mime-info> 

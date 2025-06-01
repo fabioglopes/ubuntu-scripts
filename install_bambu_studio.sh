@@ -36,6 +36,15 @@ ensure_dependencies() {
         packages_to_install="$packages_to_install unzip"
     fi
     
+    # Add image conversion tools for better icon handling
+    if ! command -v inkscape &> /dev/null; then
+        packages_to_install="$packages_to_install inkscape"
+    fi
+    
+    if ! command -v convert &> /dev/null; then
+        packages_to_install="$packages_to_install imagemagick"
+    fi
+    
     if [ -n "$packages_to_install" ]; then
         echo -e "${GREEN}Installing required dependencies:$packages_to_install${NC}"
         sudo apt-get update
@@ -137,35 +146,35 @@ cat > "$HOME/.local/share/mime/packages/bambu-studio.xml" << EOL
         <magic priority="50">
             <match value="solid" type="string" offset="0"/>
         </magic>
-        <icon name="application-x-3dmf"/>
+        <icon name="model-stl"/>
     </mime-type>
     <mime-type type="application/sla">
         <comment>SLA 3D Model</comment>
         <comment xml:lang="en">SLA 3D Model</comment>
         <glob pattern="*.stl"/>
         <glob pattern="*.STL"/>
-        <icon name="application-x-3dmf"/>
+        <icon name="model-stl"/>
     </mime-type>
     <mime-type type="application/vnd.ms-pki.stl">
         <comment>STL 3D Model (Microsoft)</comment>
         <comment xml:lang="en">STL 3D Model (Microsoft)</comment>
         <glob pattern="*.stl"/>
         <glob pattern="*.STL"/>
-        <icon name="application-x-3dmf"/>
+        <icon name="model-stl"/>
     </mime-type>
     <mime-type type="model/x.stl-ascii">
         <comment>STL 3D Model (ASCII)</comment>
         <comment xml:lang="en">STL 3D Model (ASCII)</comment>
         <glob pattern="*.stl"/>
         <glob pattern="*.STL"/>
-        <icon name="application-x-3dmf"/>
+        <icon name="model-stl"/>
     </mime-type>
     <mime-type type="model/x.stl-binary">
         <comment>STL 3D Model (Binary)</comment>
         <comment xml:lang="en">STL 3D Model (Binary)</comment>
         <glob pattern="*.stl"/>
         <glob pattern="*.STL"/>
-        <icon name="application-x-3dmf"/>
+        <icon name="model-stl"/>
     </mime-type>
 </mime-info>
 EOL
@@ -173,6 +182,33 @@ EOL
 # Update MIME database
 echo -e "${GREEN}Updating MIME database...${NC}"
 update-mime-database "$HOME/.local/share/mime"
+
+# Set up MIME type icon for STL files
+echo -e "${GREEN}Setting up MIME type icon for STL files...${NC}"
+mkdir -p "$HOME/.local/share/icons/hicolor/{48x48,128x128,256x256}/mimetypes"
+
+# Create multiple sizes of the model-stl icon
+convert "$ICON_FILE" -resize 48x48 "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png"
+convert "$ICON_FILE" -resize 128x128 "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png"
+cp "$ICON_FILE" "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png"
+
+# Also override the application-x-3dmf icon which takes precedence for STL files
+cp "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/48x48/mimetypes/application-x-3dmf.png"
+cp "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/128x128/mimetypes/application-x-3dmf.png"
+cp "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/256x256/mimetypes/application-x-3dmf.png"
+
+# Also add icons to Yaru theme (Ubuntu 24.04 default theme)
+mkdir -p "$HOME/.local/share/icons/Yaru/{48x48,128x128,256x256}/mimetypes"
+cp "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png" "$HOME/.local/share/icons/Yaru/48x48/mimetypes/model-stl.png"
+cp "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png" "$HOME/.local/share/icons/Yaru/128x128/mimetypes/model-stl.png"
+cp "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png" "$HOME/.local/share/icons/Yaru/256x256/mimetypes/model-stl.png"
+cp "$HOME/.local/share/icons/hicolor/48x48/mimetypes/application-x-3dmf.png" "$HOME/.local/share/icons/Yaru/48x48/mimetypes/application-x-3dmf.png"
+cp "$HOME/.local/share/icons/hicolor/128x128/mimetypes/application-x-3dmf.png" "$HOME/.local/share/icons/Yaru/128x128/mimetypes/application-x-3dmf.png"
+cp "$HOME/.local/share/icons/hicolor/256x256/mimetypes/application-x-3dmf.png" "$HOME/.local/share/icons/Yaru/256x256/mimetypes/application-x-3dmf.png"
+
+# Update icon caches for both themes
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/Yaru" 2>/dev/null || true
 
 # Associate STL files with Bambu Studio (multiple MIME types)
 echo -e "${GREEN}Associating STL files with Bambu Studio...${NC}"
@@ -199,15 +235,22 @@ fi
 cd - > /dev/null
 rm -rf "$TEMP_DIR"
 
-# Clear icon cache and restart Nautilus
-echo -e "${GREEN}Updating icon cache...${NC}"
+# Clear icon cache and restart Nautilus for better icon refresh
+echo -e "${GREEN}Updating icon cache and refreshing file manager...${NC}"
 rm -rf ~/.cache/icon-cache.kcache
-# Update icon cache properly
+rm -rf ~/.cache/thumbnails
+# Update icon cache properly for all relevant themes
 if command -v gtk-update-icon-cache &> /dev/null; then
-    gtk-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/Yaru" 2>/dev/null || true
 fi
-nautilus -q && nautilus &
+# Restart Nautilus to refresh file icons
+nautilus -q 2>/dev/null || true
+sleep 1
+nautilus & 2>/dev/null || true
 
 echo -e "${GREEN}Bambu Studio has been successfully installed and pinned to your dock!${NC}"
 echo -e "${GREEN}You can now launch it from the applications menu or the dock.${NC}"
-echo -e "${GREEN}STL files are now associated with Bambu Studio.${NC}" 
+echo -e "${GREEN}STL files are now associated with Bambu Studio.${NC}"
+echo -e "${GREEN}Note: STL file icons in Nautilus may still show the default orange icon${NC}"
+echo -e "${GREEN}due to system icon theme precedence, but file associations work correctly.${NC}" 
