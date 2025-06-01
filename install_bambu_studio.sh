@@ -36,15 +36,6 @@ ensure_dependencies() {
         packages_to_install="$packages_to_install unzip"
     fi
     
-    # Add image conversion tools for better icon handling
-    if ! command -v inkscape &> /dev/null; then
-        packages_to_install="$packages_to_install inkscape"
-    fi
-    
-    if ! command -v convert &> /dev/null; then
-        packages_to_install="$packages_to_install imagemagick"
-    fi
-    
     if [ -n "$packages_to_install" ]; then
         echo -e "${GREEN}Installing required dependencies:$packages_to_install${NC}"
         sudo apt-get update
@@ -75,15 +66,45 @@ cd "$TEMP_DIR"
 mkdir -p "$INSTALL_DIR" "$DESKTOP_ENTRY_DIR" "$ICON_DIR"
 
 # Download the latest version of Bambu Studio
-echo -e "${GREEN}Downloading Bambu Studio...${NC}"
-wget -q --show-progress https://github.com/bambulab/BambuStudio/releases/download/V02.00.03.54/BambuStudio_ubuntu-22.04_PR-6688.zip
+echo -e "${GREEN}Fetching latest Bambu Studio release information...${NC}"
+LATEST_RELEASE_JSON=$(wget -q -O - "https://api.github.com/repos/bambulab/BambuStudio/releases/latest")
+LATEST_VERSION=$(echo "$LATEST_RELEASE_JSON" | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
+
+if [[ -z "$LATEST_VERSION" ]]; then
+    echo -e "${RED}Error: Failed to get latest version information${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Latest version found: $LATEST_VERSION${NC}"
+
+# Find the Ubuntu download URL from the latest release
+DOWNLOAD_URL=$(echo "$LATEST_RELEASE_JSON" | grep -o '"browser_download_url": "[^"]*ubuntu[^"]*\.zip"' | cut -d'"' -f4 | head -1)
+
+if [[ -z "$DOWNLOAD_URL" ]]; then
+    echo -e "${RED}Error: No Ubuntu download found for version $LATEST_VERSION${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Downloading Bambu Studio $LATEST_VERSION...${NC}"
+DOWNLOAD_FILENAME=$(basename "$DOWNLOAD_URL")
+wget -q --show-progress "$DOWNLOAD_URL"
 
 # Extract the zip file
 echo -e "${GREEN}Extracting Bambu Studio...${NC}"
-unzip -q BambuStudio_ubuntu-22.04_PR-6688.zip
+unzip -q "$DOWNLOAD_FILENAME"
+
+# Find the AppImage file (it might have a different name based on version)
+APPIMAGE_SOURCE=$(find . -name "*.AppImage" -type f | head -1)
+
+if [[ -z "$APPIMAGE_SOURCE" ]]; then
+    echo -e "${RED}Error: No AppImage found in the downloaded archive${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Found AppImage: $APPIMAGE_SOURCE${NC}"
 
 # Move AppImage to installation directory
-mv Bambu_Studio_ubuntu-22.04_PR-6688.AppImage "$APPIMAGE_FILE"
+mv "$APPIMAGE_SOURCE" "$APPIMAGE_FILE"
 
 # Make AppImage executable
 chmod +x "$APPIMAGE_FILE"
@@ -197,18 +218,55 @@ cp "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png" "$HOME/.loca
 cp "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/128x128/mimetypes/application-x-3dmf.png"
 cp "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/256x256/mimetypes/application-x-3dmf.png"
 
-# Also add icons to Yaru theme (Ubuntu 24.04 default theme)
-mkdir -p "$HOME/.local/share/icons/Yaru/{48x48,128x128,256x256}/mimetypes"
-cp "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png" "$HOME/.local/share/icons/Yaru/48x48/mimetypes/model-stl.png"
-cp "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png" "$HOME/.local/share/icons/Yaru/128x128/mimetypes/model-stl.png"
-cp "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png" "$HOME/.local/share/icons/Yaru/256x256/mimetypes/model-stl.png"
-cp "$HOME/.local/share/icons/hicolor/48x48/mimetypes/application-x-3dmf.png" "$HOME/.local/share/icons/Yaru/48x48/mimetypes/application-x-3dmf.png"
-cp "$HOME/.local/share/icons/hicolor/128x128/mimetypes/application-x-3dmf.png" "$HOME/.local/share/icons/Yaru/128x128/mimetypes/application-x-3dmf.png"
-cp "$HOME/.local/share/icons/hicolor/256x256/mimetypes/application-x-3dmf.png" "$HOME/.local/share/icons/Yaru/256x256/mimetypes/application-x-3dmf.png"
-
-# Update icon caches for both themes
 gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
-gtk-update-icon-cache -f -t "$HOME/.local/share/icons/Yaru" 2>/dev/null || true
+
+# Replace system STL icons in Yaru theme (this ensures the icons actually show up)
+echo -e "${GREEN}Replacing system STL icons with Bambu Studio icon...${NC}"
+if [ -f "/usr/share/icons/Yaru/16x16/mimetypes/model-stl.png" ]; then
+    # Save the SVG for system icon replacement
+    cp bambu-studio.svg "$HOME/.local/share/icons/bambu-studio.svg" 2>/dev/null || true
+    
+    # Replace system STL icons with Bambu Studio icon
+    for size in 16 24 32 48 256; do
+        if [ -f "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png" ]; then
+            # Create Bambu Studio icon at the correct size
+            temp_icon="/tmp/bambu-system-${size}.png"
+            if command -v inkscape &> /dev/null; then
+                inkscape bambu-studio.svg --export-type=png --export-filename="$temp_icon" --export-width=$size --export-height=$size --export-background-opacity=0 2>/dev/null
+            else
+                convert bambu-studio.svg -background transparent -resize ${size}x${size} "$temp_icon"
+            fi
+            
+            # Replace the system icon
+            sudo rm -f "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
+            sudo cp "$temp_icon" "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
+            sudo chmod 644 "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
+            rm -f "$temp_icon"
+        fi
+        
+        # Also replace the @2x versions if they exist
+        if [ -f "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png" ]; then
+            temp_icon="/tmp/bambu-system-${size}@2x.png"
+            double_size=$((size * 2))
+            if command -v inkscape &> /dev/null; then
+                inkscape bambu-studio.svg --export-type=png --export-filename="$temp_icon" --export-width=$double_size --export-height=$double_size --export-background-opacity=0 2>/dev/null
+            else
+                convert bambu-studio.svg -background transparent -resize ${double_size}x${double_size} "$temp_icon"
+            fi
+            
+            sudo rm -f "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
+            sudo cp "$temp_icon" "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
+            sudo chmod 644 "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
+            rm -f "$temp_icon"
+        fi
+    done
+    
+    # Update system icon cache
+    sudo gtk-update-icon-cache -f -t /usr/share/icons/Yaru 2>/dev/null || true
+    echo -e "${GREEN}System STL icons replaced successfully!${NC}"
+else
+    echo -e "${GREEN}No system STL icons found to replace.${NC}"
+fi
 
 # Associate STL files with Bambu Studio (multiple MIME types)
 echo -e "${GREEN}Associating STL files with Bambu Studio...${NC}"
@@ -227,7 +285,7 @@ if [ "$CURRENT_FAVORITES" = "@as []" ]; then
 else
     # If favorites list has items, append Bambu Studio if not already present
     if ! echo "$CURRENT_FAVORITES" | grep -q "bambu-studio.desktop"; then
-        gsettings set org.gnome.shell favorite-apps "$(echo "$CURRENT_FAVORITES" | sed "s/]/, 'bambu-studio.desktop']/")"
+    gsettings set org.gnome.shell favorite-apps "$(echo "$CURRENT_FAVORITES" | sed "s/]/, 'bambu-studio.desktop']/")"
     fi
 fi
 
@@ -235,22 +293,16 @@ fi
 cd - > /dev/null
 rm -rf "$TEMP_DIR"
 
-# Clear icon cache and restart Nautilus for better icon refresh
-echo -e "${GREEN}Updating icon cache and refreshing file manager...${NC}"
+# Clear icon cache and restart Nautilus
+echo -e "${GREEN}Updating icon cache...${NC}"
 rm -rf ~/.cache/icon-cache.kcache
 rm -rf ~/.cache/thumbnails
-# Update icon cache properly for all relevant themes
+# Update icon cache properly
 if command -v gtk-update-icon-cache &> /dev/null; then
-    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
-    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/Yaru" 2>/dev/null || true
+    gtk-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
 fi
-# Restart Nautilus to refresh file icons
-nautilus -q 2>/dev/null || true
-sleep 1
-nautilus & 2>/dev/null || true
+nautilus -q && nautilus &
 
 echo -e "${GREEN}Bambu Studio has been successfully installed and pinned to your dock!${NC}"
 echo -e "${GREEN}You can now launch it from the applications menu or the dock.${NC}"
-echo -e "${GREEN}STL files are now associated with Bambu Studio.${NC}"
-echo -e "${GREEN}Note: STL file icons in Nautilus may still show the default orange icon${NC}"
-echo -e "${GREEN}due to system icon theme precedence, but file associations work correctly.${NC}" 
+echo -e "${GREEN}STL files are now associated with Bambu Studio.${NC}" 
