@@ -6,6 +6,7 @@ set -e
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Variables
@@ -14,9 +15,48 @@ INSTALL_DIR="$HOME/.local/bin/bambu-studio"
 DESKTOP_ENTRY_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons"
 APPIMAGE_FILE="${INSTALL_DIR}/bambu-studio.AppImage"
-ICON_FILE="${ICON_DIR}/bambu-studio.png"
+ICON_FILE="${ICON_DIR}/bambu-studio.svg"
 DESKTOP_FILE="${DESKTOP_ENTRY_DIR}/bambu-studio.desktop"
 STARTUP_WM_CLASS="BambuStudio"
+
+# Custom download URL (can be set via command line)
+CUSTOM_DOWNLOAD_URL=""
+
+# Function to show usage
+show_usage() {
+    echo -e "${GREEN}Bambu Studio Installation Script${NC}"
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -u, --url URL     Specify a custom download URL for the Bambu Studio file (zip or AppImage)"
+    echo "  -h, --help        Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Install latest available version"
+    echo "  $0 -u https://example.com/bambu.zip  # Install from custom zip URL"
+    echo "  $0 -u https://example.com/bambu.AppImage  # Install from custom AppImage URL"
+    echo ""
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -u|--url)
+            CUSTOM_DOWNLOAD_URL="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
 
 # Ensure required dependencies are installed
 ensure_dependencies() {
@@ -34,6 +74,12 @@ ensure_dependencies() {
     
     if ! command -v unzip &> /dev/null; then
         packages_to_install="$packages_to_install unzip"
+    fi
+    
+    # Check for image conversion tools
+    if ! command -v convert &> /dev/null && ! command -v inkscape &> /dev/null && ! command -v rsvg-convert &> /dev/null; then
+        echo -e "${YELLOW}No image conversion tools found. Installing ImageMagick for icon processing...${NC}"
+        packages_to_install="$packages_to_install imagemagick"
     fi
     
     if [ -n "$packages_to_install" ]; then
@@ -65,43 +111,77 @@ cd "$TEMP_DIR"
 # Ensure directories exist
 mkdir -p "$INSTALL_DIR" "$DESKTOP_ENTRY_DIR" "$ICON_DIR"
 
-# Download the latest version of Bambu Studio
-echo -e "${GREEN}Fetching latest Bambu Studio release information...${NC}"
-LATEST_RELEASE_JSON=$(wget -q -O - "https://api.github.com/repos/bambulab/BambuStudio/releases/latest")
-LATEST_VERSION=$(echo "$LATEST_RELEASE_JSON" | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
+# Determine download URL and version
+if [[ -n "$CUSTOM_DOWNLOAD_URL" ]]; then
+    echo -e "${YELLOW}Using custom download URL: $CUSTOM_DOWNLOAD_URL${NC}"
+    DOWNLOAD_URL="$CUSTOM_DOWNLOAD_URL"
+    LATEST_VERSION="custom"
+    
+    # Validate URL format
+    if [[ ! "$DOWNLOAD_URL" =~ ^https?:// ]]; then
+        echo -e "${RED}Error: Invalid URL format. Please provide a valid HTTP/HTTPS URL.${NC}"
+        exit 1
+    fi
+else
+    # Download the latest version of Bambu Studio
+    echo -e "${GREEN}Fetching latest Bambu Studio release information...${NC}"
+    LATEST_RELEASE_JSON=$(wget -q -O - "https://api.github.com/repos/bambulab/BambuStudio/releases/latest")
+    LATEST_VERSION=$(echo "$LATEST_RELEASE_JSON" | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
 
-if [[ -z "$LATEST_VERSION" ]]; then
-    echo -e "${RED}Error: Failed to get latest version information${NC}"
-    exit 1
-fi
+    if [[ -z "$LATEST_VERSION" ]]; then
+        echo -e "${RED}Error: Failed to get latest version information${NC}"
+        exit 1
+    fi
 
-echo -e "${GREEN}Latest version found: $LATEST_VERSION${NC}"
+    echo -e "${GREEN}Latest version found: $LATEST_VERSION${NC}"
 
-# Find the Ubuntu download URL from the latest release
-DOWNLOAD_URL=$(echo "$LATEST_RELEASE_JSON" | grep -o '"browser_download_url": "[^"]*ubuntu[^"]*\.zip"' | cut -d'"' -f4 | head -1)
+    # Find the Ubuntu download URL from the latest release (try both zip and AppImage)
+    DOWNLOAD_URL=$(echo "$LATEST_RELEASE_JSON" | grep -o '"browser_download_url": "[^"]*ubuntu[^"]*\.\(zip\|AppImage\)"' | cut -d'"' -f4 | head -1)
 
-if [[ -z "$DOWNLOAD_URL" ]]; then
-    echo -e "${RED}Error: No Ubuntu download found for version $LATEST_VERSION${NC}"
-    exit 1
+    if [[ -z "$DOWNLOAD_URL" ]]; then
+        echo -e "${RED}Error: No Ubuntu download found for version $LATEST_VERSION${NC}"
+        echo -e "${YELLOW}You can specify a custom download URL using: $0 --url <URL>${NC}"
+        exit 1
+    fi
 fi
 
 echo -e "${GREEN}Downloading Bambu Studio $LATEST_VERSION...${NC}"
 DOWNLOAD_FILENAME=$(basename "$DOWNLOAD_URL")
 wget -q --show-progress "$DOWNLOAD_URL"
 
-# Extract the zip file
-echo -e "${GREEN}Extracting Bambu Studio...${NC}"
-unzip -q "$DOWNLOAD_FILENAME"
-
-# Find the AppImage file (it might have a different name based on version)
-APPIMAGE_SOURCE=$(find . -name "*.AppImage" -type f | head -1)
-
-if [[ -z "$APPIMAGE_SOURCE" ]]; then
-    echo -e "${RED}Error: No AppImage found in the downloaded archive${NC}"
+# Check if the downloaded file is a zip or AppImage
+if [[ "$DOWNLOAD_FILENAME" == *.zip ]]; then
+    echo -e "${GREEN}Extracting Bambu Studio from zip file...${NC}"
+    unzip -q "$DOWNLOAD_FILENAME"
+    
+    # Find the AppImage file (it might have a different name based on version)
+    APPIMAGE_SOURCE=$(find . -name "*.AppImage" -type f | head -1)
+    
+    if [[ -z "$APPIMAGE_SOURCE" ]]; then
+        echo -e "${RED}Error: No AppImage found in the downloaded zip archive${NC}"
+        echo -e "${YELLOW}Please check if the provided URL contains a valid Bambu Studio zip file.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}Found AppImage in zip: $APPIMAGE_SOURCE${NC}"
+    
+elif [[ "$DOWNLOAD_FILENAME" == *.AppImage ]]; then
+    echo -e "${GREEN}Downloaded AppImage directly${NC}"
+    APPIMAGE_SOURCE="$DOWNLOAD_FILENAME"
+    
+    # Verify it's actually an AppImage file
+    if ! file "$APPIMAGE_SOURCE" | grep -q "executable"; then
+        echo -e "${RED}Error: Downloaded file is not a valid AppImage${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}Found AppImage: $APPIMAGE_SOURCE${NC}"
+    
+else
+    echo -e "${RED}Error: Downloaded file is neither a zip nor an AppImage${NC}"
+    echo -e "${YELLOW}Supported file types: .zip (containing AppImage) or .AppImage (direct)${NC}"
     exit 1
 fi
-
-echo -e "${GREEN}Found AppImage: $APPIMAGE_SOURCE${NC}"
 
 # Move AppImage to installation directory
 mv "$APPIMAGE_SOURCE" "$APPIMAGE_FILE"
@@ -113,18 +193,56 @@ chmod +x "$APPIMAGE_FILE"
 echo -e "${GREEN}Setting up icon...${NC}"
 if [ ! -f "$ICON_FILE" ]; then
     # Download SVG and convert to PNG with transparent background
-    wget -q https://raw.githubusercontent.com/bambulab/BambuStudio/master/resources/images/BambuStudio.svg -O bambu-studio.svg
-    # Convert SVG to PNG with transparent background using the best available tool
-    if command -v inkscape &> /dev/null; then
-        inkscape bambu-studio.svg --export-type=png --export-filename="$ICON_FILE" --export-width=256 --export-height=256 --export-background-opacity=0
-    elif command -v convert &> /dev/null; then
-        convert bambu-studio.svg -background transparent -resize 256x256 "$ICON_FILE"
-    elif command -v rsvg-convert &> /dev/null; then
-        rsvg-convert -w 256 -h 256 -b transparent bambu-studio.svg -o "$ICON_FILE"
+    echo -e "${GREEN}Downloading Bambu Studio icon...${NC}"
+    if wget -q https://raw.githubusercontent.com/bambulab/BambuStudio/master/resources/images/BambuStudio.svg -O bambu-studio.svg; then
+        echo -e "${GREEN}SVG icon downloaded successfully${NC}"
+        
+        # Debug: Check file details
+        echo -e "${GREEN}Checking downloaded file...${NC}"
+        ls -la bambu-studio.svg
+        file bambu-studio.svg
+        
+        # Verify the SVG file exists and has content
+        if [ -f "bambu-studio.svg" ] && [ -s "bambu-studio.svg" ]; then
+            # Check if it's actually an SVG file
+            if head -n 1 bambu-studio.svg | grep -q "<?xml\|<svg"; then
+                echo -e "${GREEN}Valid SVG file detected — using it directly as app icon${NC}"
+                mkdir -p "$ICON_DIR"
+                cp "$PWD/bambu-studio.svg" "$ICON_FILE"
+                echo -e "${GREEN}SVG icon installed at: $ICON_FILE${NC}"
+            else
+                echo -e "${RED}Downloaded file is not a valid SVG${NC}"
+                echo -e "${YELLOW}File content (first few lines):${NC}"
+                head -n 5 bambu-studio.svg
+                # Try PNG fallback
+                echo -e "${YELLOW}Trying PNG fallback...${NC}"
+                if ! wget -q https://github.com/bambulab/BambuStudio/raw/master/resources/images/BambuStudio_128.png -O "$ICON_FILE"; then
+                    echo -e "${RED}PNG fallback also failed, creating placeholder icon${NC}"
+                    # Create a simple placeholder icon
+                    echo '<svg width="256" height="256" xmlns="http://www.w3.org/2000/svg"><rect width="256" height="256" fill="#4CAF50"/><text x="128" y="128" text-anchor="middle" dy=".3em" fill="white" font-size="24">BS</text></svg>' > "$ICON_FILE"
+                fi
+            fi
+        else
+            echo -e "${RED}SVG file is empty or corrupted${NC}"
+            # Try PNG fallback
+            echo -e "${YELLOW}Trying PNG fallback...${NC}"
+            if ! wget -q https://github.com/bambulab/BambuStudio/raw/master/resources/images/BambuStudio_128.png -O "$ICON_FILE"; then
+                echo -e "${RED}PNG fallback also failed, creating placeholder icon${NC}"
+                # Create a simple placeholder icon
+                echo '<svg width="256" height="256" xmlns="http://www.w3.org/2000/svg"><rect width="256" height="256" fill="#4CAF50"/><text x="128" y="128" text-anchor="middle" dy=".3em" fill="white" font-size="24">BS</text></svg>' > "$ICON_FILE"
+            fi
+        fi
     else
-        # Fallback: try to download a PNG version or use the SVG as-is
-        echo "Warning: No SVG converter found, trying fallback icon"
-        wget -q https://github.com/bambulab/BambuStudio/raw/master/resources/images/BambuStudio_128.png -O "$ICON_FILE" || cp bambu-studio.svg "$ICON_FILE"
+        echo -e "${RED}Failed to download SVG icon${NC}"
+        # Try PNG fallback
+        echo -e "${YELLOW}Trying PNG fallback...${NC}"
+        if wget -q https://github.com/bambulab/BambuStudio/raw/master/resources/images/BambuStudio_128.png -O "$ICON_FILE"; then
+            echo -e "${GREEN}Downloaded PNG fallback icon${NC}"
+        else
+            echo -e "${RED}PNG fallback also failed, creating placeholder icon${NC}"
+            # Create a simple placeholder icon
+            echo '<svg width="256" height="256" xmlns="http://www.w3.org/2000/svg"><rect width="256" height="256" fill="#4CAF50"/><text x="128" y="128" text-anchor="middle" dy=".3em" fill="white" font-size="24">BS</text></svg>' > "$ICON_FILE"
+        fi
     fi
 else
     echo "Bambu Studio icon already exists, skipping download."
@@ -204,68 +322,80 @@ EOL
 echo -e "${GREEN}Updating MIME database...${NC}"
 update-mime-database "$HOME/.local/share/mime"
 
-# Set up MIME type icon for STL files
-echo -e "${GREEN}Setting up MIME type icon for STL files...${NC}"
-mkdir -p "$HOME/.local/share/icons/hicolor/{48x48,128x128,256x256}/mimetypes"
+# Set up MIME type icon for STL files (only if convert is available)
+if command -v convert &> /dev/null; then
+    echo -e "${GREEN}Setting up MIME type icon for STL files...${NC}"
+    mkdir -p "$HOME/.local/share/icons/hicolor/{48x48,128x128,256x256}/mimetypes"
 
-# Create multiple sizes of the model-stl icon
-convert "$ICON_FILE" -resize 48x48 "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png"
-convert "$ICON_FILE" -resize 128x128 "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png"
-cp "$ICON_FILE" "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png"
+    # Create multiple sizes of the model-stl icon
+    convert "$ICON_FILE" -resize 48x48 "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png"
+    convert "$ICON_FILE" -resize 128x128 "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png"
+    cp "$ICON_FILE" "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png"
 
-# Also override the application-x-3dmf icon which takes precedence for STL files
-cp "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/48x48/mimetypes/application-x-3dmf.png"
-cp "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/128x128/mimetypes/application-x-3dmf.png"
-cp "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/256x256/mimetypes/application-x-3dmf.png"
+    # Also override the application-x-3dmf icon which takes precedence for STL files
+    cp "$HOME/.local/share/icons/hicolor/48x48/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/48x48/mimetypes/application-x-3dmf.png"
+    cp "$HOME/.local/share/icons/hicolor/128x128/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/128x128/mimetypes/application-x-3dmf.png"
+    cp "$HOME/.local/share/icons/hicolor/256x256/mimetypes/model-stl.png" "$HOME/.local/share/icons/hicolor/256x256/mimetypes/application-x-3dmf.png"
 
-gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+else
+    echo -e "${YELLOW}Skipping MIME type icon setup (ImageMagick not available)${NC}"
+fi
 
 # Replace system STL icons in Yaru theme (this ensures the icons actually show up)
-echo -e "${GREEN}Replacing system STL icons with Bambu Studio icon...${NC}"
-if [ -f "/usr/share/icons/Yaru/16x16/mimetypes/model-stl.png" ]; then
-    # Save the SVG for system icon replacement
-    cp bambu-studio.svg "$HOME/.local/share/icons/bambu-studio.svg" 2>/dev/null || true
-    
-    # Replace system STL icons with Bambu Studio icon
-    for size in 16 24 32 48 256; do
-        if [ -f "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png" ]; then
-            # Create Bambu Studio icon at the correct size
-            temp_icon="/tmp/bambu-system-${size}.png"
-            if command -v inkscape &> /dev/null; then
-                inkscape bambu-studio.svg --export-type=png --export-filename="$temp_icon" --export-width=$size --export-height=$size --export-background-opacity=0 2>/dev/null
-            else
-                convert bambu-studio.svg -background transparent -resize ${size}x${size} "$temp_icon"
-            fi
-            
-            # Replace the system icon
-            sudo rm -f "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
-            sudo cp "$temp_icon" "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
-            sudo chmod 644 "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
-            rm -f "$temp_icon"
-        fi
+if command -v convert &> /dev/null || command -v inkscape &> /dev/null; then
+    echo -e "${GREEN}Replacing system STL icons with Bambu Studio icon...${NC}"
+    if [ -f "/usr/share/icons/Yaru/16x16/mimetypes/model-stl.png" ] && [ -f "$PWD/bambu-studio.svg" ]; then
+        # Save the SVG for system icon replacement
+        cp "$PWD/bambu-studio.svg" "$HOME/.local/share/icons/bambu-studio.svg" 2>/dev/null || true
         
-        # Also replace the @2x versions if they exist
-        if [ -f "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png" ]; then
-            temp_icon="/tmp/bambu-system-${size}@2x.png"
-            double_size=$((size * 2))
-            if command -v inkscape &> /dev/null; then
-                inkscape bambu-studio.svg --export-type=png --export-filename="$temp_icon" --export-width=$double_size --export-height=$double_size --export-background-opacity=0 2>/dev/null
-            else
-                convert bambu-studio.svg -background transparent -resize ${double_size}x${double_size} "$temp_icon"
+        # Replace system STL icons with Bambu Studio icon
+        for size in 16 24 32 48 256; do
+            if [ -f "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png" ]; then
+                # Create Bambu Studio icon at the correct size
+                temp_icon="/tmp/bambu-system-${size}.png"
+                if command -v inkscape &> /dev/null; then
+                    inkscape "$PWD/bambu-studio.svg" --export-type=png --export-filename="$temp_icon" --export-width=$size --export-height=$size --export-background-opacity=0 2>/dev/null
+                elif command -v convert &> /dev/null; then
+                    convert "$PWD/bambu-studio.svg" -background transparent -resize ${size}x${size} "$temp_icon"
+                fi
+                
+                if [ -f "$temp_icon" ]; then
+                    # Replace the system icon
+                    sudo rm -f "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
+                    sudo cp "$temp_icon" "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
+                    sudo chmod 644 "/usr/share/icons/Yaru/${size}x${size}/mimetypes/model-stl.png"
+                    rm -f "$temp_icon"
+                fi
             fi
             
-            sudo rm -f "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
-            sudo cp "$temp_icon" "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
-            sudo chmod 644 "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
-            rm -f "$temp_icon"
-        fi
-    done
-    
-    # Update system icon cache
-    sudo gtk-update-icon-cache -f -t /usr/share/icons/Yaru 2>/dev/null || true
-    echo -e "${GREEN}System STL icons replaced successfully!${NC}"
+            # Also replace the @2x versions if they exist
+            if [ -f "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png" ]; then
+                temp_icon="/tmp/bambu-system-${size}@2x.png"
+                double_size=$((size * 2))
+                if command -v inkscape &> /dev/null; then
+                    inkscape "$PWD/bambu-studio.svg" --export-type=png --export-filename="$temp_icon" --export-width=$double_size --export-height=$double_size --export-background-opacity=0 2>/dev/null
+                elif command -v convert &> /dev/null; then
+                    convert "$PWD/bambu-studio.svg" -background transparent -resize ${double_size}x${double_size} "$temp_icon"
+                fi
+                
+                if [ -f "$temp_icon" ]; then
+                    sudo rm -f "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
+                    sudo cp "$temp_icon" "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
+                    sudo chmod 644 "/usr/share/icons/Yaru/${size}x${size}@2x/mimetypes/model-stl.png"
+                    rm -f "$temp_icon"
+                fi
+            fi
+        done
+        
+        # Update system icon cache
+        sudo gtk-update-icon-cache -f -t /usr/share/icons/Yaru 2>/dev/null || true
+        echo -e "${GREEN}System STL icons replaced successfully!${NC}"
+    else
+        echo -e "${GREEN}No system STL icons found to replace.${NC}"
+    fi
 else
-    echo -e "${GREEN}No system STL icons found to replace.${NC}"
+    echo -e "${YELLOW}Skipping system icon replacement (no image conversion tools available)${NC}"
 fi
 
 # Associate STL files with Bambu Studio (multiple MIME types)
@@ -285,7 +415,7 @@ if [ "$CURRENT_FAVORITES" = "@as []" ]; then
 else
     # If favorites list has items, append Bambu Studio if not already present
     if ! echo "$CURRENT_FAVORITES" | grep -q "bambu-studio.desktop"; then
-    gsettings set org.gnome.shell favorite-apps "$(echo "$CURRENT_FAVORITES" | sed "s/]/, 'bambu-studio.desktop']/")"
+        gsettings set org.gnome.shell favorite-apps "$(echo "$CURRENT_FAVORITES" | sed "s/]/, 'bambu-studio.desktop']/")"
     fi
 fi
 
