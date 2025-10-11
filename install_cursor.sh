@@ -1,11 +1,16 @@
 #!/bin/bash
 
+# Cursor Installation Script
+# Compatible with Ubuntu and Debian distributions
+# Supports multiple desktop environments (GNOME, KDE, XFCE, MATE)
+
 # Exit on error
 set -e
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Variables
@@ -15,12 +20,25 @@ APP_NAME="Cursor"
 ensure_dependencies() {
     if ! command -v wget &> /dev/null; then
         echo -e "${GREEN}Installing wget...${NC}"
-        sudo apt-get update
-        sudo apt-get install -y wget
+        
+        # Use apt if available, otherwise fall back to apt-get
+        if command -v apt &> /dev/null; then
+            sudo apt update
+            sudo apt install -y wget
+        elif command -v apt-get &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y wget
+        else
+            echo -e "${RED}Error: No supported package manager found (apt or apt-get)${NC}"
+            exit 1
+        fi
     fi
 }
 
 echo -e "${GREEN}Starting Cursor installation...${NC}"
+
+# Detect distribution
+detect_distribution
 
 # Ensure dependencies
 ensure_dependencies
